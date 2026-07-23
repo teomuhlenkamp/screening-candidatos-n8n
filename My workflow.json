@@ -1,0 +1,1349 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "subject:(Postulacion) has:attachment"
+        },
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "id": "ab5a97f5-afda-4eac-a94f-4c961e38df45",
+      "name": "Gmail Trigger CVs",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1328,
+        80
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "lA7f5ZGi3Rv7vsqv",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "59e35626af7747d0",
+              "leftValue": "={{ $binary.attachment_0 ? true : false }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8f3fa093-3eaa-440d-b024-c0d3bad4f3f6",
+      "name": "Filtrar Adjunto",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -1104,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "attachment_0",
+        "options": {}
+      },
+      "id": "276e0669-69bf-46c3-bc4a-250657650ad4",
+      "name": "Extraer Texto PDF",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        -880,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trig = $('Gmail Trigger CVs').item.json;\n\n// Manejo seguro de subject\nlet subjectRaw = trig.subject || trig.Subject || '';\nif (typeof subjectRaw !== 'string') subjectRaw = String(subjectRaw.text || subjectRaw.value || subjectRaw || '');\nconst subject = subjectRaw.trim();\n\n// Manejo seguro de from (objeto o string)\nlet fromRaw = trig.from || trig.From || '';\nif (typeof fromRaw === 'object' && fromRaw !== null) {\n  fromRaw = fromRaw.text || fromRaw.value || fromRaw.address || JSON.stringify(fromRaw);\n}\nconst from = String(fromRaw || '').trim();\n\nlet email = from, nombre = from;\nconst m = from.match(/(.*)<(.+)>/);\nif (m) { \n  nombre = m[1].replace(/[\"']/g, '').trim(); \n  email = m[2].trim(); \n}\n\nlet puesto = \"\";\nconst pm = subject.match(/Postulaci[oó]n\\s*[-:]\\s*(.+)/i);\nif (pm) puesto = pm[1].trim();\n\nconst texto = ($json.text || '').trim();\n\nreturn [{ \n  json: { \n    nombre_real: nombre || 'Desconocido', \n    email_real: email,\n    puesto_solicitado: puesto, \n    texto_cv_crudo: texto, \n    largo_texto: texto.length \n  } \n}];"
+      },
+      "id": "61dc4348-1bfb-4568-ad0e-1df56c2c48dc",
+      "name": "Preparar Datos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Vacantes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filterByFormula",
+              "value": "=={{ \"AND({Título del Puesto}='\" + $('Preparar Datos').item.json.puesto_solicitado + \"', {Estado de la Vacante}='Abierta')\" }}"
+            },
+            {
+              "name": "maxRecords",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bb1447bd-53f2-41d0-b231-104dd24f0aec",
+      "name": "Buscar Vacante",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -448,
+        80
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "90e8c7dd6f2e4e6c",
+              "leftValue": "={{ ($json.records && $json.records.length > 0) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6a463b88-7f0f-4781-a8a7-7599c5330530",
+      "name": "IF Vacante Existe",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -208,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $json.records[0];\nreturn [{ json: { id: r.id, ...r.fields } }];"
+      },
+      "id": "59a364e2-5b21-4190-885d-26345c65a6f5",
+      "name": "Vacante Match",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Candidatos",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Nombre_Real\": $('Preparar Datos').item.json.nombre_real, \"Email_Real\": $('Preparar Datos').item.json.email_real, \"Texto_CV_Crudo\": $('Preparar Datos').item.json.texto_cv_crudo, \"Vacante\": [$('Vacante Match').item.json.id], \"Estado\": \"Recibido\", \"Reintentos\": 0} }) }}",
+        "options": {}
+      },
+      "id": "a26ec3c1-c6db-482b-8636-15bbc8ec07e5",
+      "name": "Crear Candidato",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Logs_Auditoria",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Evento\": \"Ingesta\", \"Actor\": \"Sistema\", \"Candidato\": [$json.id], \"Detalle\": 'CV recibido para ' + $('Preparar Datos').item.json.puesto_solicitado + '. Largo: ' + $('Preparar Datos').item.json.largo_texto + ' chars.'} }) }}",
+        "options": {}
+      },
+      "id": "8523569a-71b3-4b99-9f14-74ccb58fadc2",
+      "name": "Log Ingesta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        0
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Logs_Auditoria",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Evento\": \"Error parseo\", \"Actor\": \"Sistema\", \"Detalle\": 'Postulacion sin vacante valida. Puesto: ' + $('Preparar Datos').item.json.puesto_solicitado + ' | ' + $('Preparar Datos').item.json.email_real} }) }}",
+        "options": {}
+      },
+      "id": "6dcb63ff-ed56-4c62-9de8-85280f829943",
+      "name": "Log Vacante Desconocida",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        192
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "77df5cbf-1ac6-42ac-a99e-4255205afab6",
+      "name": "Schedule cada 2 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1328,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Candidatos",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filterByFormula",
+              "value": "AND({Estado}='Recibido', {Reintentos}<3)"
+            },
+            {
+              "name": "maxRecords",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8ccf3fe9-3f7e-45b7-a5e1-c37bc28680cf",
+      "name": "Buscar Candidatos Nuevos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1104,
+        544
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $json.records && $json.records[0];\nif (!r) { return []; }               // no hay candidatos -> corta la ejecucion\nreturn [{ json: { id: r.id, ...r.fields } }];"
+      },
+      "id": "7f25bee2-3b22-4fd0-8625-36e288c228e0",
+      "name": "Candidato",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Candidatos/{{ $('Candidato').item.json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Estado\": \"En procesamiento\"} }) }}",
+        "options": {}
+      },
+      "id": "5698b66f-421d-430c-aa82-2e6e5b20e7b3",
+      "name": "Marcar En Proceso",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -656,
+        544
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Vacantes/{{ $('Candidato').item.json.Vacante[0] }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "options": {}
+      },
+      "id": "4766c09a-076d-4da8-87b7-30211d758078",
+      "name": "Get Vacante",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -448,
+        544
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { id: $json.id, ...$json.fields } }];"
+      },
+      "id": "3001d535-2dbb-430d-a26f-3273b9a960e0",
+      "name": "Vacante",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Prompts_Config/{{ $('Vacante').item.json.Config_Prompt[0] }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "options": {}
+      },
+      "id": "703e2b3d-da6a-4556-afb6-9a46a9ae426c",
+      "name": "Get Config Prompt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        544
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { id: $json.id, ...$json.fields } }];"
+      },
+      "id": "65695b2d-1fdb-497e-b476-6b4d1cc88ea6",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cand = $('Candidato').item.json;\nconst vac  = $('Vacante').item.json;\nconst cfg  = $('Config').item.json;\nlet texto = (cand.Texto_CV_Crudo || '').toString();\ntexto = texto.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/g, '[EMAIL]');\ntexto = texto.replace(/(\\+?\\d[\\d\\s().-]{6,}\\d)/g, '[TELEFONO]');\nif (cand.Nombre_Real) {\n  for (const p of cand.Nombre_Real.split(/\\s+/).filter(p => p.length > 2)) {\n    texto = texto.replace(new RegExp(p.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&'),'gi'), '[NOMBRE]');\n  }\n}\ntexto = texto.replace(/(https?:\\/\\/[^\\s]+)/g, '[URL]');\nconst candId = cand.Candidato_ID || ('CAND-' + (cand.Nro || '?'));\nconst estatico = (cfg.System_Prompt || '') +\n  \"\\n\\n## RUBRICA DE SCORING\\n\" + (cfg.Rubrica_Scoring || '') +\n  \"\\n\\n## FORMATO DE SALIDA\\n\" + (cfg.Formato_Salida || '');\nconst vacante = \"## VACANTE\\nPuesto: \" + (vac.Puesto || '') +\n  \"\\nDescripcion: \" + (vac.Descripcion || '') +\n  \"\\nExcluyentes:\\n\" + (vac.Requisitos_Excluyentes || '') +\n  \"\\nDeseables:\\n\" + (vac.Requisitos_Deseables || '') +\n  \"\\nScore minimo: \" + (vac.Score_Minimo || 'N/D');\nconst system = [\n  { type: \"text\", text: estatico, cache_control: { type: \"ephemeral\" } },\n  { type: \"text\", text: vacante,  cache_control: { type: \"ephemeral\" } }\n];\nconst messages = [\n  { role: \"user\", content: \"CV anonimizado de \" + candId + \":\\n\\n\" + texto +\n      \"\\n\\nEvalua contra la vacante y devolve UNICAMENTE el JSON del formato.\" },\n  { role: \"assistant\", content: \"{\" }\n];\nreturn [{ json: { candidato_id: candId, modelo: cfg.Modelo || 'claude-sonnet-5',\n  max_tokens: cfg.Max_Tokens || 1500,\n  temperatura: (cfg.Temperatura !== undefined ? cfg.Temperatura : 0.2),\n  system, messages, largo_anonimizado: texto.length } }];"
+      },
+      "id": "f4b1ca3a-6b07-416b-b856-e39c7ad2722b",
+      "name": "Anonimizar y Armar Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $json;\nlet raw = \"\";\ntry { raw = resp.content[0].text || \"\"; } catch (e) { raw = \"\"; }\nlet t = raw.trim().replace(/^```(json)?/i,'').replace(/```$/,'').trim();\nif (!t.startsWith('{')) t = '{' + t;\nlet parsed = {}, parse_ok = true, error_detail = \"\";\ntry { parsed = JSON.parse(t); } catch (e) { parse_ok = false; error_detail = String(e.message||e); }\nconst u = resp.usage || {};\nreturn [{ json: { parse_ok, error_detail, resultado: parsed, modelo: resp.model || \"\",\n  tokens_input: u.input_tokens||0, tokens_cache_read: u.cache_read_input_tokens||0,\n  tokens_output: u.output_tokens||0, respuesta_cruda: raw.slice(0,4000) } }];"
+      },
+      "id": "055f646c-be84-4583-b1d2-6aae0c09f2a9",
+      "name": "Parsear Respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ca00eab02a2b4a4f",
+              "leftValue": "={{ $json.parse_ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5abd6254-5899-42cc-bfd0-303f8bc4cae9",
+      "name": "IF Parseo OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1104,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Candidatos/{{ $('Candidato').item.json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Score\": $('Parsear Respuesta').item.json.resultado.score, \"Desglose_Score\": JSON.stringify($('Parsear Respuesta').item.json.resultado.desglose || {}), \"Cumple_Excluyentes\": $('Parsear Respuesta').item.json.resultado.cumple_excluyentes === true, \"Fortalezas\": ($('Parsear Respuesta').item.json.resultado.fortalezas || []).join('\\n'), \"Brechas\": ($('Parsear Respuesta').item.json.resultado.brechas || []).join('\\n'), \"Justificacion_IA\": $('Parsear Respuesta').item.json.resultado.justificacion || '', \"Recomendacion_IA\": ({avanzar:'Avanzar',revisar:'Revisar',descartar:'Descartar'})[$('Parsear Respuesta').item.json.resultado.recomendacion] || 'Revisar', \"Estado\": \"Pendiente aprobacion\", \"Execution_ID\": $execution.id} }) }}",
+        "options": {}
+      },
+      "id": "d6a2d677-2766-4dd8-971d-b6973b76d20d",
+      "name": "Guardar Score",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1328,
+        448
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Logs_Auditoria",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Evento\": \"Scoring IA\", \"Actor\": \"Sistema\", \"Candidato\": [$('Candidato').item.json.id], \"Execution_ID\": $execution.id, \"Modelo_Usado\": $('Parsear Respuesta').item.json.modelo, \"Tokens_Input\": $('Parsear Respuesta').item.json.tokens_input, \"Tokens_Cache_Read\": $('Parsear Respuesta').item.json.tokens_cache_read, \"Tokens_Output\": $('Parsear Respuesta').item.json.tokens_output, \"Detalle\": 'Score ' + $('Parsear Respuesta').item.json.resultado.score + ' | ' + $('Parsear Respuesta').item.json.resultado.recomendacion} }) }}",
+        "options": {}
+      },
+      "id": "cbc75b56-e268-44e2-8396-d57ef24dfa6f",
+      "name": "Log Scoring",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1552,
+        448
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "teomuhlenkamp@gmail.com",
+        "subject": "={{ '[Screening IA] Aprobar ' + $('Anonimizar y Armar Prompt').item.json.candidato_id + ' - ' + $('Vacante').item.json.Puesto + ' (Score ' + $('Parsear Respuesta').item.json.resultado.score + ')' }}",
+        "message": "=<h2>Revision de candidato requerida</h2><p><b>Candidato:</b> {{ $('Anonimizar y Armar Prompt').item.json.candidato_id }}<br><b>Vacante:</b> {{ $('Vacante').item.json.Puesto }}<br><b>Score IA:</b> {{ $('Parsear Respuesta').item.json.resultado.score }}/100<br><b>Recomendacion:</b> {{ $('Parsear Respuesta').item.json.resultado.recomendacion }}<br><b>Cumple excluyentes:</b> {{ $('Parsear Respuesta').item.json.resultado.cumple_excluyentes }}</p><p><b>Justificacion:</b> {{ $('Parsear Respuesta').item.json.resultado.justificacion }}</p><hr><p>Decision humana (obligatoria antes de contactar):</p><p><a href=\"{{ $execution.resumeUrl }}?decision=aprobar\" style=\"background:#2e7d32;color:#fff;padding:10px 18px;text-decoration:none;border-radius:6px;\">APROBAR</a>&nbsp;&nbsp;&nbsp;<a href=\"{{ $execution.resumeUrl }}?decision=rechazar\" style=\"background:#c62828;color:#fff;padding:10px 18px;text-decoration:none;border-radius:6px;\">RECHAZAR</a></p><p style=\"font-size:12px;color:#888\">Sistema de alto riesgo (Anexo III, AI Act). Decision registrada en auditoria.</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "0bb7692c-c7ee-48d3-9829-91b64dbad4fa",
+      "name": "Email Aprobacion",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1760,
+        448
+      ],
+      "webhookId": "e6acd241-a16e-4f44-8c90-b5a9b9a913f9",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "lA7f5ZGi3Rv7vsqv",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Logs_Auditoria",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Evento\": \"Solicitud aprobacion\", \"Actor\": \"Sistema\", \"Candidato\": [$('Candidato').item.json.id], \"Execution_ID\": $execution.id, \"Detalle\": 'Email de aprobacion enviado a ' + $('Vacante').item.json.Email_Reclutador} }) }}",
+        "options": {}
+      },
+      "id": "9e78077e-167d-4d00-a2a6-1fa751f6b9cc",
+      "name": "Log Solicitud",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1984,
+        448
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "options": {
+          "webhookSuffix": "aprobacion"
+        }
+      },
+      "id": "5ab21a7f-458e-4642-8b62-7145626c4cc8",
+      "name": "Esperar Aprobacion",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2208,
+        448
+      ],
+      "webhookId": "75052d93-72b7-43da-aef0-28910305d135"
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $json || {};\nlet d = (j.query && j.query.decision) || j.decision || (j.body && j.body.decision) || 'sin_respuesta';\nreturn [{ json: { decision: String(d).toLowerCase().trim() } }];"
+      },
+      "id": "d83b3544-b98f-48fb-b74a-1f0d8c12cc71",
+      "name": "Leer Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2432,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "7003072f93324e6b",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "aprobar",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "683a5261-6a4a-4f30-84c1-d4ce5236c823",
+      "name": "IF Aprobado",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2640,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Candidatos/{{ $('Candidato').item.json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Estado\": \"Aprobado\", \"Decision_Humana\": \"Aprobado\", \"Decisor\": $('Vacante').item.json.Email_Reclutador, \"Fecha_Decision\": $now.toISO()} }) }}",
+        "options": {}
+      },
+      "id": "3572c62c-bcf7-40cf-9ef3-59b2a9018ee7",
+      "name": "Marcar Aprobado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2864,
+        352
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Candidato').item.json.Email_Real }}",
+        "subject": "={{ 'Avanzas en el proceso - ' + $('Vacante').item.json.Puesto }}",
+        "message": "=<p>Hola {{ $('Candidato').item.json.Nombre_Real }},</p><p>Gracias por postularte a <b>{{ $('Vacante').item.json.Puesto }}</b>. Tu perfil avanza a la siguiente etapa; nos contactamos para coordinar una entrevista.</p><p>Saludos,<br>Equipo de Seleccion</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "d126e923-fece-40e5-90e4-3115e72b5874",
+      "name": "Email al Candidato",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3088,
+        352
+      ],
+      "webhookId": "efbc943e-d465-4f4c-85b5-57128affcaf9",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "lA7f5ZGi3Rv7vsqv",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Logs_Auditoria",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Evento\": \"Decision humana\", \"Actor\": \"Humano\", \"Candidato\": [$('Candidato').item.json.id], \"Execution_ID\": $execution.id, \"Detalle\": 'APROBADO por ' + $('Vacante').item.json.Email_Reclutador} }) }}",
+        "options": {}
+      },
+      "id": "1fad74c7-004a-4d25-bc86-52a6d9b7fa28",
+      "name": "Log Aprobado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3312,
+        352
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Candidatos/{{ $('Candidato').item.json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Estado\": \"Rechazado\", \"Decision_Humana\": $('Leer Decision').item.json.decision === 'rechazar' ? 'Rechazado' : 'Sin respuesta', \"Decisor\": $('Vacante').item.json.Email_Reclutador, \"Fecha_Decision\": $now.toISO()} }) }}",
+        "options": {}
+      },
+      "id": "1f2a4322-9f07-44b1-a909-56e778b5afbc",
+      "name": "Marcar Rechazado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2864,
+        544
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Logs_Auditoria",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Evento\": $('Leer Decision').item.json.decision === 'rechazar' ? 'Decision humana' : 'Timeout HITL', \"Actor\": \"Humano\", \"Candidato\": [$('Candidato').item.json.id], \"Execution_ID\": $execution.id, \"Detalle\": 'Resultado HITL: ' + $('Leer Decision').item.json.decision} }) }}",
+        "options": {}
+      },
+      "id": "a4ab6a76-c7ea-420e-8f38-d2657df614c2",
+      "name": "Log Rechazado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3088,
+        544
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Candidatos/{{ $('Candidato').item.json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Estado\": \"Error\", \"Reintentos\": ($('Candidato').item.json.Reintentos || 0) + 1} }) }}",
+        "options": {}
+      },
+      "id": "d1bc397d-594f-4628-ba74-d361e0c1095d",
+      "name": "Guardar Error Parseo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1328,
+        672
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Logs_Auditoria",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Evento\": \"Error parseo\", \"Actor\": \"Sistema\", \"Candidato\": [$('Candidato').item.json.id], \"Execution_ID\": $execution.id, \"Modelo_Usado\": $('Parsear Respuesta').item.json.modelo, \"Detalle\": 'Fallo parseo: ' + $('Parsear Respuesta').item.json.error_detail + ' | ' + $('Parsear Respuesta').item.json.respuesta_cruda} }) }}",
+        "options": {}
+      },
+      "id": "75bb1f58-f175-44fb-8e6a-37d3cf37a1cf",
+      "name": "Log Error Parseo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1552,
+        672
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "31893a9c-33da-45b4-a518-ab054e2d6a08",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1328,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $json || {}; const ex = j.execution || {}; const wf = j.workflow || {};\nconst msg = (ex.error && (ex.error.message || ex.error.description)) || 'Error desconocido';\nreturn [{ json: { workflow_nombre: wf.name || 'N/D', execution_id: ex.id || 'N/D',\n  nodo_fallido: ex.lastNodeExecuted || 'N/D', mensaje: String(msg) } }];"
+      },
+      "id": "02b2eaae-931e-4802-8104-a53445267669",
+      "name": "Formatear Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1104,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.airtable.com/v0/app40fFSAb9ZdyXSh/Logs_Auditoria",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "airtableTokenApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ fields: {\"Evento\": \"Error API\", \"Actor\": \"Sistema\", \"Execution_ID\": $json.execution_id, \"Detalle\": 'WF: ' + $json.workflow_nombre + ' | Nodo: ' + $json.nodo_fallido + ' | ' + $json.mensaje} }) }}",
+        "options": {}
+      },
+      "id": "4fa71592-366c-4814-a910-62a173245e11",
+      "name": "Log Error Global",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -880,
+        1040
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "Y4rVS5MhGOz9tGjY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "TU_MAIL@gmail.com",
+        "subject": "={{ '[ALERTA Screening IA] Fallo en ' + $json.workflow_nombre }}",
+        "message": "=<h3>Fallo en el sistema de screening</h3><p><b>Workflow:</b> {{ $json.workflow_nombre }}<br><b>Execution:</b> {{ $json.execution_id }}<br><b>Nodo:</b> {{ $json.nodo_fallido }}<br><b>Error:</b> {{ $json.mensaje }}</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "868d70c4-026e-4775-abc1-fd4ee7faef9e",
+      "name": "Email Alerta Admin",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -656,
+        1040
+      ],
+      "webhookId": "cf897109-b9e6-4f79-a08a-e6c97a6b3f74",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "lA7f5ZGi3Rv7vsqv",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: \"gpt-4o-mini\",\n  response_format: { type: \"json_object\" },\n  messages: [\n    {\n      role: \"system\",\n      content: $('Anonimizar y Armar Prompt').item.json.system[0].text + \"\\n\\n\" + $('Anonimizar y Armar Prompt').item.json.system[1].text\n    },\n    {\n      role: \"user\",\n      content: $('Anonimizar y Armar Prompt').item.json.messages[0].content\n    }\n  ],\n  temperature: 0.2\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "885c133b-6bf2-48d7-b390-127a227f122c",
+      "name": "Chat Scoring (HTTP)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        544
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "SngApYEB06AwEg9r",
+          "name": "OpenAI account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger CVs": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Adjunto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Adjunto": {
+      "main": [
+        [
+          {
+            "node": "Extraer Texto PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Texto PDF": {
+      "main": [
+        [
+          {
+            "node": "Preparar Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Datos": {
+      "main": [
+        [
+          {
+            "node": "Buscar Vacante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Vacante": {
+      "main": [
+        [
+          {
+            "node": "IF Vacante Existe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Vacante Existe": {
+      "main": [
+        [
+          {
+            "node": "Vacante Match",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Vacante Desconocida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vacante Match": {
+      "main": [
+        [
+          {
+            "node": "Crear Candidato",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear Candidato": {
+      "main": [
+        [
+          {
+            "node": "Log Ingesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule cada 2 min": {
+      "main": [
+        [
+          {
+            "node": "Buscar Candidatos Nuevos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Candidatos Nuevos": {
+      "main": [
+        [
+          {
+            "node": "Candidato",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Candidato": {
+      "main": [
+        [
+          {
+            "node": "Marcar En Proceso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar En Proceso": {
+      "main": [
+        [
+          {
+            "node": "Get Vacante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Vacante": {
+      "main": [
+        [
+          {
+            "node": "Vacante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vacante": {
+      "main": [
+        [
+          {
+            "node": "Get Config Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Config Prompt": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Anonimizar y Armar Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anonimizar y Armar Prompt": {
+      "main": [
+        [
+          {
+            "node": "Chat Scoring (HTTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear Respuesta": {
+      "main": [
+        [
+          {
+            "node": "IF Parseo OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Parseo OK": {
+      "main": [
+        [
+          {
+            "node": "Guardar Score",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Guardar Error Parseo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar Score": {
+      "main": [
+        [
+          {
+            "node": "Log Scoring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Scoring": {
+      "main": [
+        [
+          {
+            "node": "Email Aprobacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Aprobacion": {
+      "main": [
+        [
+          {
+            "node": "Log Solicitud",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Solicitud": {
+      "main": [
+        [
+          {
+            "node": "Esperar Aprobacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Esperar Aprobacion": {
+      "main": [
+        [
+          {
+            "node": "Leer Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer Decision": {
+      "main": [
+        [
+          {
+            "node": "IF Aprobado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Aprobado": {
+      "main": [
+        [
+          {
+            "node": "Marcar Aprobado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Marcar Rechazado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar Aprobado": {
+      "main": [
+        [
+          {
+            "node": "Email al Candidato",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email al Candidato": {
+      "main": [
+        [
+          {
+            "node": "Log Aprobado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar Rechazado": {
+      "main": [
+        [
+          {
+            "node": "Log Rechazado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar Error Parseo": {
+      "main": [
+        [
+          {
+            "node": "Log Error Parseo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Formatear Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear Error": {
+      "main": [
+        [
+          {
+            "node": "Log Error Global",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error Global": {
+      "main": [
+        [
+          {
+            "node": "Email Alerta Admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Scoring (HTTP)": {
+      "main": [
+        [
+          {
+            "node": "Parsear Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "d94c4060-b0cc-40ca-9b08-d03348ace201",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "36de5e030d6a33b9c7142f541648923eb89607814711ea376c73a303d2e037ba"
+  },
+  "nodeGroups": [],
+  "id": "y9EmvoAdj7AMv9Ya",
+  "tags": []
+}
