@@ -11,6 +11,7 @@ Sistema de automatización desarrollado en **n8n** para procesar postulaciones l
 ## 🗄️ Base de Datos (Airtable)
 🔗 [Hacé clic acá para ver la base de datos](https://airtable.com/invite/l?inviteId=invu292R2l4DBEVgM&inviteToken=481242b4fb761bbc79f12f726eca8fc0fe5101f6c1609c2f090f70b6c58d54fa&utm_medium=email&utm_source=product_team&utm_content=transactional-alerts)
 
+📄 **[Ver Diagrama de Arquitectura (PDF)](./Diagrama_Arquitectura_1.pdf)**
 
 ---
 
